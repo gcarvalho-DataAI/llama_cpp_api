@@ -1,6 +1,40 @@
-# llama.cpp OpenAI-compatible API (CPU-focused)
+# llama.cpp OpenAI-Compatible API
 
-FastAPI proxy for a local `llama.cpp` server with OpenAI-compatible endpoints.
+Production-grade FastAPI proxy for local LLM serving on `llama.cpp`, exposing OpenAI-compatible endpoints for chat, completions, and embeddings.
+
+## Why this project matters
+This repository demonstrates practical AI backend engineering for real deployment scenarios, not just demos.
+
+- Runs local LLM inference with OpenAI API compatibility (`/v1/*`)
+- Adds reliability controls expected in production (timeouts, retries, rate limits)
+- Improves operability with metrics, structured logs, and traceable request IDs
+- Supports secure multi-client usage through API keys and per-client throttling
+- Keeps integration simple for existing OpenAI-based applications
+
+## Recruiter Snapshot
+- Domain: LLM infrastructure, AI backend systems, API platform engineering
+- Focus: performance, resilience, observability, and integration ergonomics
+- Stack: Python, FastAPI, Pydantic, httpx, llama.cpp, Prometheus-style metrics
+- Value: lowers inference cost by enabling local CPU-first serving with standard API contracts
+
+## Architecture
+
+```text
+OpenAI-compatible client/app
+          |
+          v
+   FastAPI Proxy (this repo)
+   - auth & per-client limits
+   - schema validation
+   - retries/timeouts
+   - metrics/logging
+          |
+          v
+   llama.cpp server (local)
+          |
+          v
+      GGUF model
+```
 
 ## Endpoints
 - `GET /health`
@@ -19,7 +53,7 @@ FastAPI proxy for a local `llama.cpp` server with OpenAI-compatible endpoints.
 - Sliding-window rate limit per client
 - Structured JSON logs with `x-request-id`
 - CORS allowlist
-- Smoke tests (`pytest`) and simple load test script
+- Smoke tests (`pytest`) and load test script
 
 ## Prerequisites
 - Python 3.10+
@@ -110,7 +144,7 @@ curl http://127.0.0.1:8000/v1/embeddings \
   }'
 ```
 
-## CPU tuning (i9 14900K)
+## CPU tuning (i9 14900K baseline)
 Suggested baseline in `.env`:
 
 ```env
@@ -133,18 +167,21 @@ source .venv/bin/activate
 pytest -q
 ```
 
-Run simple load test:
+Run basic load test:
 
 ```bash
 source .venv/bin/activate
 python scripts/load_test.py --requests 40 --concurrency 8 --model llama --api-key local
 ```
 
-## Integration with your existing project
-In your other app (OpenAI-compatible client), point to this proxy:
+## Integration with OpenAI-based apps
+Point your existing app to this proxy:
 
 ```env
 OPENAI_ENDPOINT=http://127.0.0.1:8000/v1
 OPENAI_API_KEY=local
 OPENAI_CHAT_MODEL=llama
 ```
+
+## Suggested GitHub "About" text
+Production-grade local LLM API: OpenAI-compatible FastAPI proxy for llama.cpp with retries, rate limiting, metrics, streaming, and secure multi-client support.
