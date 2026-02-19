@@ -1,0 +1,18 @@
+# Environments and local state
+.env
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Large local assets
+models/
+llama.cpp/
+
+# Logs and temp files
+*.log
+/tmp/
+
+# IDE
+.vscode/
+.idea/
