@@ -11,11 +11,18 @@ This repository demonstrates practical AI backend engineering for real deploymen
 - Supports secure multi-client usage through API keys and per-client throttling
 - Keeps integration simple for existing OpenAI-based applications
 
-## Recruiter Snapshot
-- Domain: LLM infrastructure, AI backend systems, API platform engineering
-- Focus: performance, resilience, observability, and integration ergonomics
-- Stack: Python, FastAPI, Pydantic, httpx, llama.cpp, Prometheus-style metrics
-- Value: lowers inference cost by enabling local CPU-first serving with standard API contracts
+## LLM Engineer Snapshot
+- Domain: LLM serving, inference reliability, and production API design
+- Focus: latency/throughput tradeoffs, model runtime constraints, and endpoint compatibility
+- Stack: Python, FastAPI, Pydantic, httpx, llama.cpp, GGUF models, Prometheus-style metrics
+- Value: enables cost-efficient local inference while preserving OpenAI-compatible integration
+
+## What this demonstrates for LLM Engineer roles
+- Inference serving architecture: wraps `llama.cpp` with a hardened API layer for real client workloads
+- API contract engineering: keeps OpenAI request/response patterns for easy migration and interoperability
+- Runtime reliability: retries, backoff, timeouts, and rate limits to handle unstable upstream behavior
+- Observability for model serving: request IDs, structured logs, and metrics for incident triage and tuning
+- Performance-oriented operations: CPU-first tuning knobs (`threads`, `batch`, `ctx`) and reproducible load checks
 
 ## Architecture
 
@@ -184,4 +191,4 @@ OPENAI_CHAT_MODEL=llama
 ```
 
 ## Suggested GitHub "About" text
-Production-grade local LLM API: OpenAI-compatible FastAPI proxy for llama.cpp with retries, rate limiting, metrics, streaming, and secure multi-client support.
+LLM Engineer portfolio project: production-ready OpenAI-compatible API on top of llama.cpp, with streaming, validation, retries, rate limiting, and observability.
