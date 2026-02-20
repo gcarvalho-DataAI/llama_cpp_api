@@ -83,10 +83,34 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+If you want model-aware routing from request payload (`"model": "..."`), configure multiple upstreams:
+
+```env
+MODEL_UPSTREAMS=llama-8b=http://127.0.0.1:8081,llama-70b-q4=http://127.0.0.1:8082,llama-70b-q5=http://127.0.0.1:8083
+```
+
+In this mode, the proxy routes each request to the upstream selected by the payload `model`.
+Each `llama-server` process should load one model.
+
+Also define local model files for the multi-launcher script:
+
+```env
+MODEL_PATHS=llama-8b=./models/Meta-Llama-3.1-8B-Instruct-Q5_K_M.gguf,llama-70b-q4=./models/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf,llama-70b-q5=./models/Meta-Llama-3.1-70B-Instruct-Q5_K_M/Meta-Llama-3.1-70B-Instruct-Q5_K_M-00001-of-00002.gguf
+ENABLED_MODELS=llama-8b
+```
+
+`ENABLED_MODELS` lets you start only a subset of models (recommended on limited RAM).
+
 3. Start `llama.cpp`:
 
 ```bash
 ./scripts/run_llama_server.sh
+```
+
+For multi-model mode, start multiple backends:
+
+```bash
+./scripts/run_llama_servers_multi.sh
 ```
 
 4. Start proxy API:
@@ -188,6 +212,14 @@ Point your existing app to this proxy:
 OPENAI_ENDPOINT=http://127.0.0.1:8000/v1
 OPENAI_API_KEY=local
 OPENAI_CHAT_MODEL=llama
+```
+
+For multi-model mode, set `OPENAI_CHAT_MODEL` dynamically in your client payload and make sure it matches keys in `MODEL_UPSTREAMS`.
+
+To stop multi-backend servers:
+
+```bash
+./scripts/stop_llama_servers_multi.sh
 ```
 
 ## Suggested GitHub "About" text

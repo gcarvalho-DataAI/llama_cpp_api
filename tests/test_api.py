@@ -26,6 +26,7 @@ def _reset_state() -> None:
     main.metrics.upstream_latency_count.clear()
     main.metrics.upstream_errors_total.clear()
     main.metrics.rate_limited_total = 0
+    main.model_router._upstreams = {}  # type: ignore[attr-defined]
 
 
 client = TestClient(main.app)

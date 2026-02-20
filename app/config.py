@@ -26,9 +26,24 @@ def _get_csv(name: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _get_model_upstreams(name: str) -> dict[str, str]:
+    items = _get_csv(name)
+    mapping: dict[str, str] = {}
+    for item in items:
+        if "=" not in item:
+            continue
+        model, url = item.split("=", 1)
+        model = model.strip()
+        url = url.strip().rstrip("/")
+        if model and url:
+            mapping[model] = url
+    return mapping
+
+
 @dataclass(frozen=True)
 class Settings:
     llama_cpp_base_url: str
+    model_upstreams: dict[str, str]
     fallback_openai_api_key: str
     openai_api_keys: list[str]
     cors_allowed_origins: list[str]
@@ -47,6 +62,7 @@ load_dotenv()
 
 settings = Settings(
     llama_cpp_base_url=_get_env("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080").rstrip("/"),
+    model_upstreams=_get_model_upstreams("MODEL_UPSTREAMS"),
     fallback_openai_api_key=_get_env("OPENAI_API_KEY", ""),
     openai_api_keys=_get_csv("OPENAI_API_KEYS"),
     cors_allowed_origins=_get_csv("CORS_ALLOWED_ORIGINS"),

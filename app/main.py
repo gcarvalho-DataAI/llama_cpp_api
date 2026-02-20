@@ -16,6 +16,7 @@ from app.auth import ApiKeyAuth
 from app.config import settings
 from app.metrics import MetricsRegistry
 from app.rate_limit import SlidingWindowRateLimiter
+from app.routing import ModelRouter
 from app.schemas import ChatCompletionRequest, CompletionRequest, EmbeddingsRequest
 
 app = FastAPI(title="llama.cpp OpenAI-compatible proxy", version="0.2.0")
@@ -35,6 +36,7 @@ logger = logging.getLogger("llama_cpp_proxy")
 auth = ApiKeyAuth()
 rate_limiter = SlidingWindowRateLimiter(settings.rate_limit_rpm)
 metrics = MetricsRegistry()
+model_router = ModelRouter()
 
 RETRIABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
@@ -75,12 +77,13 @@ def _retry_wait(attempt: int) -> float:
 
 async def _post_json_with_retry(
     *,
+    base_url: str,
     path: str,
     payload: dict,
     timeout: httpx.Timeout,
     request_id: str,
 ) -> tuple[int, bytes, str]:
-    target_url = f"{settings.llama_cpp_base_url}{path}"
+    target_url = f"{base_url}{path}"
 
     for attempt in range(settings.max_retries + 1):
         started = time.monotonic()
@@ -121,12 +124,13 @@ async def _post_json_with_retry(
 
 async def _post_stream_with_retry(
     *,
+    base_url: str,
     path: str,
     payload: dict,
     timeout: httpx.Timeout,
     request_id: str,
 ) -> tuple[httpx.AsyncClient, httpx.Response]:
-    target_url = f"{settings.llama_cpp_base_url}{path}"
+    target_url = f"{base_url}{path}"
 
     for attempt in range(settings.max_retries + 1):
         started = time.monotonic()
@@ -169,8 +173,14 @@ async def _post_stream_with_retry(
     raise HTTPException(status_code=502, detail=f"Failed to reach upstream on {path}")
 
 
-async def _get_with_retry(*, path: str, timeout: httpx.Timeout, request_id: str) -> tuple[int, bytes, str]:
-    target_url = f"{settings.llama_cpp_base_url}{path}"
+async def _get_with_retry(
+    *,
+    base_url: str,
+    path: str,
+    timeout: httpx.Timeout,
+    request_id: str,
+) -> tuple[int, bytes, str]:
+    target_url = f"{base_url}{path}"
 
     for attempt in range(settings.max_retries + 1):
         started = time.monotonic()
@@ -299,21 +309,68 @@ async def metrics_endpoint() -> Response:
 
 @app.get("/v1/models")
 async def list_models(request: Request) -> Response:
-    status, content, content_type = await _get_with_retry(
-        path="/v1/models",
-        timeout=_timeout(settings.timeout_models_s),
-        request_id=request.state.request_id,
-    )
-    return Response(content=content, status_code=status, media_type=content_type)
+    if not model_router.has_model_map:
+        status, content, content_type = await _get_with_retry(
+            base_url=settings.llama_cpp_base_url,
+            path="/v1/models",
+            timeout=_timeout(settings.timeout_models_s),
+            request_id=request.state.request_id,
+        )
+        return Response(content=content, status_code=status, media_type=content_type)
+
+    data: list[dict[str, object]] = []
+    for model, base_url in model_router.configured_upstreams:
+        try:
+            status, content, _ = await _get_with_retry(
+                base_url=base_url,
+                path="/v1/models",
+                timeout=_timeout(settings.timeout_models_s),
+                request_id=request.state.request_id,
+            )
+            if status >= 400:
+                continue
+            body = json.loads(content.decode("utf-8"))
+            entries = body.get("data")
+            if isinstance(entries, list) and entries:
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        entry = dict(entry)
+                        entry["upstream_model_id"] = entry.get("id", "")
+                        entry["id"] = model
+                        data.append(entry)
+            else:
+                data.append(
+                    {
+                        "id": model,
+                        "object": "model",
+                        "owned_by": "llamacpp",
+                        "meta": {"upstream": base_url},
+                    }
+                )
+        except Exception:
+            continue
+
+    # Keep deterministic output and avoid duplicated IDs.
+    seen: set[str] = set()
+    unique_data: list[dict[str, object]] = []
+    for item in data:
+        model_id = str(item.get("id", ""))
+        if model_id and model_id not in seen:
+            seen.add(model_id)
+            unique_data.append(item)
+
+    return JSONResponse({"object": "list", "data": unique_data, "models": unique_data})
 
 
 @app.post("/v1/chat/completions")
 async def chat_completions(body: ChatCompletionRequest, request: Request) -> Response:
     payload = body.model_dump(exclude_none=True)
     request_id = request.state.request_id
+    base_url = model_router.upstream_for_model(body.model)
 
     if body.stream:
         client, upstream = await _post_stream_with_retry(
+            base_url=base_url,
             path="/v1/chat/completions",
             payload=payload,
             timeout=_timeout(settings.timeout_chat_s),
@@ -333,6 +390,7 @@ async def chat_completions(body: ChatCompletionRequest, request: Request) -> Res
         return StreamingResponse(event_stream(), status_code=upstream.status_code, media_type=content_type)
 
     status, content, content_type = await _post_json_with_retry(
+        base_url=base_url,
         path="/v1/chat/completions",
         payload=payload,
         timeout=_timeout(settings.timeout_chat_s),
@@ -343,7 +401,9 @@ async def chat_completions(body: ChatCompletionRequest, request: Request) -> Res
 
 @app.post("/v1/embeddings")
 async def embeddings(body: EmbeddingsRequest, request: Request) -> Response:
+    base_url = model_router.upstream_for_model(body.model)
     status, content, content_type = await _post_json_with_retry(
+        base_url=base_url,
         path="/v1/embeddings",
         payload=body.model_dump(exclude_none=True),
         timeout=_timeout(settings.timeout_embeddings_s),
@@ -356,9 +416,11 @@ async def embeddings(body: EmbeddingsRequest, request: Request) -> Response:
 async def completions(body: CompletionRequest, request: Request) -> Response:
     payload = body.model_dump(exclude_none=True)
     request_id = request.state.request_id
+    base_url = model_router.upstream_for_model(body.model)
 
     if body.stream:
         client, upstream = await _post_stream_with_retry(
+            base_url=base_url,
             path="/v1/completions",
             payload=payload,
             timeout=_timeout(settings.timeout_completions_s),
@@ -378,6 +440,7 @@ async def completions(body: CompletionRequest, request: Request) -> Response:
         return StreamingResponse(event_stream(), status_code=upstream.status_code, media_type=content_type)
 
     status, content, content_type = await _post_json_with_retry(
+        base_url=base_url,
         path="/v1/completions",
         payload=payload,
         timeout=_timeout(settings.timeout_completions_s),
