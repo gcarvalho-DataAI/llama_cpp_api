@@ -119,6 +119,34 @@ For multi-model mode, start multiple backends:
 ./scripts/run_api.sh
 ```
 
+## Docker (single public port with model routing)
+This setup uses one public API (`:8000`) and multiple internal `llama-server` containers.
+
+Start lightweight mode (proxy + 8B only):
+
+```bash
+./scripts/docker_up.sh
+```
+
+Start full mode (proxy + 8B + 70B Q4 + 70B Q5):
+
+```bash
+./scripts/docker_up.sh full
+```
+
+Stop everything:
+
+```bash
+./scripts/docker_down.sh
+```
+
+By default, payload model aliases route to:
+- `llama-8b` -> `llama_8b`
+- `llama-70b-q4` -> `llama_70b_q4`
+- `llama-70b-q5` -> `llama_70b_q5`
+
+Call API on `http://127.0.0.1:8000` and send the desired model in the request body.
+
 ## Security and auth config
 Use one key:
 
