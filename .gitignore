@@ -1,6 +1,7 @@
 # Environments and local state
 .env
 .venv/
+.venv-vllm/
 .pytest_cache/
 __pycache__/
 *.pyc
